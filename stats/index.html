@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>アクセス解析 — 阿部武蔵</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/assets/favicon.svg">
+<style>
+  :root {
+    --bg: #faf6ef; --bg-warm: #f3ece0;
+    --ink: #1a1613; --ink-soft: #4a3f37; --ink-mute: #7a6e63;
+    --line: #e6dcc9; --accent: #c8472d; --accent-soft: #e16f55;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    background: var(--bg); color: var(--ink); margin: 0;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 22px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lead { color: var(--ink-mute); margin: 0 0 20px; font-size: 13px; }
+
+  .gate {
+    max-width: 420px; margin: 80px auto 0;
+    background: #fff; padding: 32px; border-radius: 16px;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 80px -32px rgba(40,28,15,.18);
+  }
+  label { display: block; font-weight: 600; font-size: 12px; color: var(--ink-soft); margin: 0 0 6px; }
+  input[type="password"] {
+    width: 100%; font-size: 14px;
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(200,71,45,.15); }
+  button {
+    background: var(--accent); color: #fff; border: none;
+    padding: 12px 26px; border-radius: 999px;
+    font-weight: 700; font-size: 14px; cursor: pointer;
+  }
+  button:hover { background: #b03e26; }
+  .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 8px 18px; font-size: 13px; }
+  .ghost:hover { background: var(--bg-warm); }
+  .hidden { display: none !important; }
+
+  .head-row { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+  .nav-links a { color: var(--ink-mute); margin-left: 14px; font-size: 12px; text-decoration: none; }
+  .nav-links a:hover { color: var(--accent); }
+
+  .grid { display: grid; gap: 16px; }
+  .grid-stats { grid-template-columns: repeat(4, 1fr); }
+  .grid-2 { grid-template-columns: 1.4fr 1fr; }
+  @media (max-width: 720px) {
+    .grid-stats { grid-template-columns: repeat(2, 1fr); }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 22px;
+  }
+  .stat-card .num {
+    font-family: 'Inter', sans-serif;
+    font-size: 32px; font-weight: 700; line-height: 1.05;
+    color: var(--ink); letter-spacing: -.01em;
+    margin-bottom: 4px;
+  }
+  .stat-card .label {
+    font-size: 11px; letter-spacing: .15em; text-transform: uppercase;
+    color: var(--ink-mute); font-weight: 600;
+  }
+  .stat-card .sub { color: var(--ink-mute); font-size: 12px; margin-top: 4px; }
+
+  h2 {
+    font-size: 13px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--accent); margin: 32px 0 14px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  th { color: var(--ink-mute); font-weight: 500; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+  .bar { display: inline-block; height: 6px; background: var(--accent-soft); vertical-align: middle; border-radius: 3px; }
+
+  .chart {
+    height: 140px; position: relative;
+    background: var(--bg-warm); border-radius: 8px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .chart svg { width: 100%; height: 100%; display: block; }
+
+  .footer-note {
+    margin-top: 32px; padding-top: 16px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-mute); font-size: 11px;
+  }
+  .pill {
+    display: inline-block;
+    background: var(--bg-warm); padding: 2px 8px;
+    border-radius: 999px; font-size: 11px;
+    color: var(--ink-soft); margin-left: 6px;
+  }
+  .status {
+    font-size: 12px;
+    color: var(--ink-mute);
+  }
+  .status.error { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="gate" class="gate">
+  <h1>アクセス解析</h1>
+  <p class="lead">パスワードを入力してください。<br>（編集画面と同じものです）</p>
+  <form id="login-form">
+    <label>パスワード</label>
+    <input id="pw" type="password" autocomplete="current-password" required autofocus>
+    <div style="margin-top:18px;"><button type="submit">ログイン</button></div>
+    <div id="login-status" class="status" style="margin-top:12px"></div>
+  </form>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dash" class="wrap hidden">
+  <div class="head-row">
+    <div>
+      <h1>アクセス解析</h1>
+      <p class="lead">takezo.jiuflow.com の訪問データ <span id="updated" class="pill"></span></p>
+    </div>
+    <div class="nav-links">
+      <a href="/" target="_blank">公開サイトを開く →</a>
+      <a href="/edit/">編集画面 →</a>
+      <button class="ghost" id="refresh">更新</button>
+    </div>
+  </div>
+
+  <h2>過去24時間</h2>
+  <div class="grid grid-stats">
+    <div class="card stat-card"><div class="num" id="t-visits">—</div><div class="label">訪問者</div><div class="sub">ユニーク・推定</div></div>
+    <div class="card stat-card"><div class="num" id="t-requests">—</div><div class="label">リクエスト</div><div class="sub">ページ＋アセット</div></div>
+    <div class="card stat-card"><div class="num" id="t-bytes">—</div><div class="label">転送量</div><div class="sub">配信バイト</div></div>
+    <div class="card stat-card"><div class="num" id="t-perhour">—</div><div class="label">時間あたり</div><div class="sub">直近24h平均</div></div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2 style="margin: 0 0 10px;">時間別トラフィック（直近24h）</h2>
+    <div class="chart" id="hourly-chart"></div>
+  </div>
+
+  <div class="grid grid-2" style="margin-top:16px;">
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">人気ページ TOP15</h2>
+      <table id="paths"><thead><tr><th>パス</th><th class="num">リクエスト</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">国別 TOP10</h2>
+      <table id="countries"><thead><tr><th>国</th><th class="num">訪問</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="grid grid-2" style="margin-top:16px;">
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">デバイス</h2>
+      <table id="devices"><thead><tr><th>種類</th><th class="num">リクエスト</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">ブラウザ</h2>
+      <table id="browsers"><thead><tr><th>ブラウザ</th><th class="num">リクエスト</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <h2 style="margin-top: 32px;">過去7日間（日別）</h2>
+  <div class="grid grid-stats">
+    <div class="card stat-card"><div class="num" id="w-visits">—</div><div class="label">合計訪問</div></div>
+    <div class="card stat-card"><div class="num" id="w-requests">—</div><div class="label">合計リクエスト</div></div>
+    <div class="card stat-card"><div class="num" id="w-bytes">—</div><div class="label">合計転送量</div></div>
+    <div class="card stat-card"><div class="num" id="w-avg">—</div><div class="label">日平均訪問</div></div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2 style="margin: 0 0 10px;">日別トレンド</h2>
+    <div class="chart" id="daily-chart"></div>
+    <table id="daily-table" style="margin-top:12px;"><thead><tr><th>日付</th><th class="num">訪問</th><th class="num">リクエスト</th><th class="num">転送量</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <p class="footer-note">
+    データソース: Cloudflare Analytics (zone: jiuflow.com / host: takezo.jiuflow.com)<br>
+    集計には数分の遅延があります。Bot トラフィックは含まれます（CF が Verified Bot として識別したものは除外）。
+  </p>
+</div>
+
+<script>
+let pw = sessionStorage.getItem('takezo_pw') || '';
+
+const fmt = n => (n||0).toLocaleString('ja-JP');
+const fmtBytes = n => {
+  n = n || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1024*1024*1024) return (n/1024/1024).toFixed(1) + ' MB';
+  return (n/1024/1024/1024).toFixed(2) + ' GB';
+};
+
+function setStatus(el, msg, type='') { el.textContent = msg; el.className = 'status ' + type; }
+
+async function fetchStats() {
+  const r = await fetch('/api/stats', { headers: { 'X-Edit-Password': pw }, cache: 'no-store' });
+  if (r.status === 401) throw new Error('UNAUTHORIZED');
+  if (!r.ok) throw new Error('Server error: ' + r.status);
+  return r.json();
+}
+
+function render(d) {
+  const updated = new Date(d.generatedAt);
+  document.getElementById('updated').textContent = '取得: ' + updated.toLocaleString('ja-JP', { hour:'2-digit', minute:'2-digit' });
+
+  // 24h totals
+  const t = d.last24h.totals;
+  document.getElementById('t-visits').textContent   = fmt(t.sum?.visits);
+  document.getElementById('t-requests').textContent = fmt(t.count);
+  document.getElementById('t-bytes').textContent    = fmtBytes(t.sum?.edgeResponseBytes);
+  document.getElementById('t-perhour').textContent  = fmt(Math.round((t.sum?.visits || 0) / 24));
+
+  // Top paths
+  const maxP = Math.max(1, ...(d.last24h.byPath.map(x => x.count)));
+  document.querySelector('#paths tbody').innerHTML = d.last24h.byPath.slice(0,15).map(x => {
+    const pct = (x.count/maxP)*100;
+    return `<tr><td>${esc(x.dimensions.clientRequestPath)}</td><td class="num">${fmt(x.count)} <span class="bar" style="width:${pct*0.6}px"></span></td></tr>`;
+  }).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">データなし</td></tr>';
+
+  // Countries
+  const maxC = Math.max(1, ...(d.last24h.byCountry.map(x => x.sum?.visits || 0)));
+  document.querySelector('#countries tbody').innerHTML = d.last24h.byCountry.slice(0,10).map(x => {
+    const v = x.sum?.visits || 0;
+    return `<tr><td>${esc(x.dimensions.clientCountryName || '不明')}</td><td class="num">${fmt(v)} <span class="bar" style="width:${(v/maxC)*60}px"></span></td></tr>`;
+  }).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">データなし</td></tr>';
+
+  // Devices
+  document.querySelector('#devices tbody').innerHTML = d.last24h.byDevice.slice(0,5).map(x =>
+    `<tr><td>${esc(x.dimensions.clientDeviceType || '不明')}</td><td class="num">${fmt(x.count)}</td></tr>`
+  ).join('');
+
+  // Browsers
+  document.querySelector('#browsers tbody').innerHTML = d.last24h.byBrowser.slice(0,8).map(x =>
+    `<tr><td>${esc(x.dimensions.userAgentBrowser || '不明')}</td><td class="num">${fmt(x.count)}</td></tr>`
+  ).join('');
+
+  // Hourly chart
+  drawChart('hourly-chart', d.last24h.byHour.map(h => ({
+    x: new Date(h.dimensions.datetimeHour).getTime(),
+    y: h.sum?.visits || 0
+  })), 'visits');
+
+  // 7d totals
+  const w = d.last7d.totals;
+  document.getElementById('w-visits').textContent   = fmt(w.visits);
+  document.getElementById('w-requests').textContent = fmt(w.requests);
+  document.getElementById('w-bytes').textContent    = fmtBytes(w.bytes);
+  document.getElementById('w-avg').textContent      = fmt(Math.round(w.visits/7));
+
+  // Daily table
+  document.querySelector('#daily-table tbody').innerHTML = d.last7d.days.map(day => {
+    const date = new Date(day.date + 'T00:00:00');
+    const label = `${date.getMonth()+1}/${date.getDate()} (${['日','月','火','水','木','金','土'][date.getDay()]})`;
+    return `<tr><td>${label}</td><td class="num">${fmt(day.visits)}</td><td class="num">${fmt(day.requests)}</td><td class="num">${fmtBytes(day.bytes)}</td></tr>`;
+  }).join('');
+
+  // Daily chart
+  drawChart('daily-chart', d.last7d.days.map(day => ({
+    x: new Date(day.date + 'T00:00:00').getTime(),
+    y: day.visits
+  })), 'visits');
+}
+
+function esc(s) {
+  return String(s||'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
+
+function drawChart(id, points, label) {
+  const el = document.getElementById(id);
+  if (!points.length) { el.innerHTML = '<div style="padding:50px;text-align:center;color:var(--ink-mute);font-size:12px">データなし</div>'; return; }
+  const w = el.clientWidth || 800, h = el.clientHeight || 140;
+  const padL = 40, padR = 12, padT = 12, padB = 22;
+  const cw = w - padL - padR, ch = h - padT - padB;
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const maxY = Math.max(1, ...ys);
+  const xScale = x => padL + ((x - minX) / Math.max(1, maxX - minX)) * cw;
+  const yScale = y => padT + ch - (y / maxY) * ch;
+  const path = points.map((p, i) => `${i===0?'M':'L'} ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(' ');
+  const area = `${path} L ${xScale(maxX).toFixed(1)} ${padT+ch} L ${xScale(minX).toFixed(1)} ${padT+ch} Z`;
+
+  const yTicks = [0, Math.round(maxY/2), maxY];
+  const labelEvery = Math.max(1, Math.floor(points.length / 6));
+  let svg = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="g-${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c8472d" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#c8472d" stop-opacity="0"/>
+    </linearGradient></defs>`;
+  // Y grid
+  yTicks.forEach(v => {
+    const y = yScale(v);
+    svg += `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#e6dcc9" stroke-width="0.5"/>`;
+    svg += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" fill="#7a6e63">${v}</text>`;
+  });
+  // X labels
+  points.forEach((p, i) => {
+    if (i % labelEvery !== 0) return;
+    const d = new Date(p.x);
+    const lbl = id === 'hourly-chart' ? `${d.getHours()}時` : `${d.getMonth()+1}/${d.getDate()}`;
+    svg += `<text x="${xScale(p.x)}" y="${h-6}" text-anchor="middle" font-size="9" fill="#7a6e63">${lbl}</text>`;
+  });
+  svg += `<path d="${area}" fill="url(#g-${id})"/>`;
+  svg += `<path d="${path}" fill="none" stroke="#c8472d" stroke-width="1.8"/>`;
+  // Dots
+  points.forEach(p => {
+    svg += `<circle cx="${xScale(p.x).toFixed(1)}" cy="${yScale(p.y).toFixed(1)}" r="2.5" fill="#c8472d"/>`;
+  });
+  svg += `</svg>`;
+  el.innerHTML = svg;
+}
+
+async function load() {
+  try {
+    const j = await fetchStats();
+    if (!j.ok) throw new Error(j.error || 'unknown');
+    render(j);
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('dash').classList.remove('hidden');
+  } catch (e) {
+    if (String(e.message).includes('UNAUTHORIZED')) {
+      pw = ''; sessionStorage.removeItem('takezo_pw');
+      document.getElementById('dash').classList.add('hidden');
+      document.getElementById('gate').classList.remove('hidden');
+      const s = document.getElementById('login-status');
+      if (s.textContent) setStatus(s, 'パスワードが違います', 'error');
+    } else {
+      alert('エラー: ' + e.message);
+    }
+  }
+}
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  pw = document.getElementById('pw').value;
+  sessionStorage.setItem('takezo_pw', pw);
+  setStatus(document.getElementById('login-status'), '読み込み中…');
+  await load();
+});
+document.getElementById('refresh').addEventListener('click', load);
+
+if (pw) load();
+</script>
+</body>
+</html>
