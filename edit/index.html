@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>サイト編集 — 阿部武蔵</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/assets/favicon.svg">
+<style>
+  :root {
+    --bg: #faf6ef; --bg-warm: #f3ece0;
+    --ink: #1a1613; --ink-soft: #4a3f37; --ink-mute: #7a6e63;
+    --line: #e6dcc9; --accent: #c8472d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    background: var(--bg); color: var(--ink); margin: 0;
+    font-size: 14px; line-height: 1.55;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 {
+    font-size: 14px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--accent); margin: 36px 0 14px;
+    border-bottom: 1px solid var(--line); padding-bottom: 6px;
+  }
+  .lead { color: var(--ink-mute); margin: 0 0 24px; }
+  .hint { color: var(--ink-mute); font-size: 12px; margin: 4px 0 12px; }
+
+  label { display: block; font-weight: 600; font-size: 12px; color: var(--ink-soft); margin: 12px 0 6px; }
+  input[type="text"], input[type="password"], textarea {
+    width: 100%; font-family: inherit; font-size: 14px;
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px;
+    color: var(--ink);
+  }
+  textarea { min-height: 80px; resize: vertical; line-height: 1.6; }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(200,71,45,.15); }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 600px) { .row { grid-template-columns: 1fr; } }
+
+  .card {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px 22px; margin-bottom: 16px;
+  }
+
+  button {
+    background: var(--accent); color: #fff;
+    border: none; padding: 14px 28px;
+    border-radius: 999px; font-weight: 700;
+    font-size: 14px; cursor: pointer;
+  }
+  button:hover { background: #b03e26; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .ghost:hover { background: var(--bg-warm); }
+
+  .toolbar {
+    position: sticky; bottom: 0;
+    background: rgba(250,246,239,.95);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    padding: 14px 24px; margin-top: 24px;
+    display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  }
+  .status { font-size: 12px; color: var(--ink-mute); }
+  .status.ok { color: #1a8553; }
+  .status.error { color: var(--accent); }
+
+  .gate {
+    max-width: 420px; margin: 80px auto 0;
+    background: #fff; padding: 32px;
+    border-radius: 16px; border: 1px solid var(--line);
+    box-shadow: 0 30px 80px -32px rgba(40,28,15,.18);
+  }
+  .gate h1 { margin-bottom: 6px; }
+  .gate .hint { margin-bottom: 18px; }
+  .hidden { display: none !important; }
+
+  .info-box {
+    background: var(--bg-warm); border-left: 3px solid var(--accent);
+    padding: 12px 14px; font-size: 12px; color: var(--ink-soft);
+    border-radius: 4px; margin: 0 0 16px;
+  }
+  .preview-link {
+    display: inline-block; font-size: 12px;
+    color: var(--accent); margin-left: auto;
+  }
+  code { background: var(--bg-warm); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="gate" class="gate">
+  <h1>サイト編集</h1>
+  <p class="hint">パスワードを入力してください。</p>
+  <form id="login-form">
+    <label>パスワード</label>
+    <input id="pw" type="password" autocomplete="current-password" required autofocus>
+    <div style="margin-top: 18px;">
+      <button type="submit">ログイン</button>
+    </div>
+    <div id="login-status" class="status" style="margin-top:12px"></div>
+  </form>
+</div>
+
+<!-- EDITOR -->
+<div id="editor" class="wrap hidden">
+  <h1>サイト編集</h1>
+  <p class="lead">編集して「保存」を押すと、本番サイトに即反映されます。<br>
+    <a href="/" target="_blank" class="preview-link">公開サイトを開く →</a>
+  </p>
+  <div class="info-box">
+    <strong>ヒント:</strong> <code>&lt;br&gt;</code> で改行、<code>&lt;strong&gt;〜&lt;/strong&gt;</code> で太字、<code>&lt;em&gt;〜&lt;/em&gt;</code> でアクセント色。HTMLタグはそのまま使えます。
+  </div>
+
+  <form id="edit-form">
+    <h2>ヒーロー（一番上）</h2>
+    <div class="card">
+      <label>上のラベル（英語）</label>
+      <input type="text" data-k="hero.eyebrow">
+      <div class="row">
+        <div><label>大見出し 1行目</label><input type="text" data-k="hero.title_1"></div>
+        <div><label>2行目（朱色アクセント）</label><input type="text" data-k="hero.title_2"></div>
+      </div>
+      <label>2行目の続き</label>
+      <input type="text" data-k="hero.title_3">
+      <label>サブタイトル（名前）</label>
+      <input type="text" data-k="hero.subtitle">
+      <label>リード文（HTML可）</label>
+      <textarea data-k="hero.lead" rows="5"></textarea>
+      <div class="row">
+        <div><label>主CTAボタン</label><input type="text" data-k="hero.cta_primary"></div>
+        <div><label>副CTAボタン</label><input type="text" data-k="hero.cta_secondary"></div>
+      </div>
+      <label>写真キャプション</label>
+      <input type="text" data-k="hero.photo_caption">
+    </div>
+
+    <h2>数字ストリップ</h2>
+    <div class="card">
+      <div class="row">
+        <div><label>① 数字</label><input type="text" data-k="stats.s1_num"></div>
+        <div><label>① 単位</label><input type="text" data-k="stats.s1_unit"></div>
+      </div>
+      <label>① ラベル</label><input type="text" data-k="stats.s1_label">
+      <div class="row">
+        <div><label>② 数字</label><input type="text" data-k="stats.s2_num"></div>
+        <div><label>② 単位</label><input type="text" data-k="stats.s2_unit"></div>
+      </div>
+      <label>② ラベル</label><input type="text" data-k="stats.s2_label">
+      <div class="row">
+        <div><label>③ 数字</label><input type="text" data-k="stats.s3_num"></div>
+        <div><label>③ 単位</label><input type="text" data-k="stats.s3_unit"></div>
+      </div>
+      <label>③ ラベル</label><input type="text" data-k="stats.s3_label">
+      <div class="row">
+        <div><label>④ 数字</label><input type="text" data-k="stats.s4_num"></div>
+        <div><label>④ 単位</label><input type="text" data-k="stats.s4_unit"></div>
+      </div>
+      <label>④ ラベル</label><input type="text" data-k="stats.s4_label">
+    </div>
+
+    <h2>ストーリー（8年タイムライン）</h2>
+    <div class="card">
+      <label>セクション見出し</label>
+      <textarea data-k="story.title" rows="2"></textarea>
+      <label>リード文</label>
+      <textarea data-k="story.lead" rows="2"></textarea>
+      <label>引用文（座右の銘的）</label>
+      <textarea data-k="story.quote" rows="2"></textarea>
+      <label>引用元</label>
+      <input type="text" data-k="story.quote_cite">
+    </div>
+
+    <h2>師匠の言葉（村田会長）</h2>
+    <div class="card">
+      <label>引用本文</label>
+      <textarea data-k="master.quote" rows="3"></textarea>
+      <label>名前</label>
+      <input type="text" data-k="master.name">
+      <label>肩書き</label>
+      <input type="text" data-k="master.title">
+    </div>
+
+    <h2>マニフェスト「これを読んでほしい」</h2>
+    <div class="card">
+      <label>大見出し</label>
+      <textarea data-k="manifesto.title" rows="3"></textarea>
+      <label>カード①タイトル</label>
+      <input type="text" data-k="manifesto.c1_title">
+      <label>カード①本文</label>
+      <textarea data-k="manifesto.c1_body" rows="3"></textarea>
+      <label>カード②タイトル</label>
+      <input type="text" data-k="manifesto.c2_title">
+      <label>カード②本文</label>
+      <textarea data-k="manifesto.c2_body" rows="3"></textarea>
+      <label>カード③タイトル</label>
+      <input type="text" data-k="manifesto.c3_title">
+      <label>カード③本文</label>
+      <textarea data-k="manifesto.c3_body" rows="3"></textarea>
+    </div>
+
+    <h2>プロフィール</h2>
+    <div class="card">
+      <label>所属</label><input type="text" data-k="profile.academy">
+      <div class="row">
+        <div><label>帯</label><input type="text" data-k="profile.belt"></div>
+        <div><label>帯（補足）</label><input type="text" data-k="profile.belt_sub"></div>
+      </div>
+      <div class="row">
+        <div><label>年齢</label><input type="text" data-k="profile.age"></div>
+        <div><label>生年月日</label><input type="text" data-k="profile.age_sub"></div>
+      </div>
+      <div class="row">
+        <div><label>柔術歴</label><input type="text" data-k="profile.years"></div>
+        <div><label>柔術歴（補足）</label><input type="text" data-k="profile.years_sub"></div>
+      </div>
+      <div class="row">
+        <div><label>師匠</label><input type="text" data-k="profile.master"></div>
+        <div><label>師匠（肩書き）</label><input type="text" data-k="profile.master_sub"></div>
+      </div>
+      <label>座右の銘</label><input type="text" data-k="profile.motto">
+      <label>好きなもの</label><input type="text" data-k="profile.favorites">
+      <div class="row">
+        <div><label>趣味</label><input type="text" data-k="profile.hobbies"></div>
+        <div><label>趣味（補足）</label><input type="text" data-k="profile.hobbies_sub"></div>
+      </div>
+      <label>夢</label><textarea data-k="profile.dream" rows="2"></textarea>
+      <label>これから、ほしいもの（HTML可）</label>
+      <textarea data-k="profile.looking" rows="3"></textarea>
+      <label>同 補足</label>
+      <input type="text" data-k="profile.looking_sub">
+    </div>
+
+    <h2>SNS / 連絡先</h2>
+    <div class="card">
+      <label>Instagram URL</label>
+      <input type="text" data-k="sns.instagram" placeholder="https://www.instagram.com/...">
+      <label>X (Twitter) URL</label>
+      <input type="text" data-k="sns.twitter" placeholder="https://x.com/...">
+      <label>YouTube URL</label>
+      <input type="text" data-k="sns.youtube" placeholder="https://youtube.com/@...">
+      <label>連絡先メール</label>
+      <input type="text" data-k="sns.email">
+    </div>
+  </form>
+
+  <div class="toolbar">
+    <span id="save-status" class="status">未保存の変更なし</span>
+    <div style="display:flex; gap:10px;">
+      <button class="ghost" id="reload-btn" type="button">リロード</button>
+      <button id="save-btn" type="button">保存して反映 →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const gate = document.getElementById('gate');
+const editor = document.getElementById('editor');
+const loginForm = document.getElementById('login-form');
+const pwInput = document.getElementById('pw');
+const loginStatus = document.getElementById('login-status');
+const saveStatus = document.getElementById('save-status');
+const saveBtn = document.getElementById('save-btn');
+const reloadBtn = document.getElementById('reload-btn');
+
+let pw = sessionStorage.getItem('takezo_pw') || '';
+let dirty = false;
+
+function setStatus(msg, type='') {
+  saveStatus.textContent = msg;
+  saveStatus.className = 'status ' + type;
+}
+
+function setNested(obj, path, value) {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur[parts[i]] = cur[parts[i]] || {};
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+function getNested(obj, path) {
+  return path.split('.').reduce((o,k) => o ? o[k] : undefined, obj);
+}
+
+async function loadContent() {
+  const r = await fetch('/api/content', { cache: 'no-store' });
+  const j = await r.json();
+  const c = j.content || {};
+  document.querySelectorAll('[data-k]').forEach(el => {
+    const v = getNested(c, el.dataset.k);
+    if (v !== undefined && v !== null) el.value = v;
+  });
+  dirty = false;
+  setStatus('未保存の変更なし');
+}
+
+async function tryLogin(password) {
+  // probe by attempting a no-op POST? Simpler: just save credentials and trust that real save will fail with 401 if wrong.
+  // To validate up front, do a save with current content (which we don't have yet). Instead, do a benign GET first then store pw.
+  pw = password;
+  sessionStorage.setItem('takezo_pw', password);
+  gate.classList.add('hidden');
+  editor.classList.remove('hidden');
+  await loadContent();
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginStatus.textContent = '確認中…';
+  loginStatus.className = 'status';
+  // Validate by attempting a dry POST with current content.
+  try {
+    const r0 = await fetch('/api/content');
+    const j0 = await r0.json();
+    const r = await fetch('/api/content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Edit-Password': pwInput.value },
+      body: JSON.stringify({ content: j0.content })
+    });
+    if (r.status === 401) {
+      loginStatus.textContent = 'パスワードが違います';
+      loginStatus.className = 'status error';
+      return;
+    }
+    if (!r.ok) throw new Error('Server error');
+    await tryLogin(pwInput.value);
+  } catch (err) {
+    loginStatus.textContent = '通信エラー: ' + err.message;
+    loginStatus.className = 'status error';
+  }
+});
+
+// Mark dirty on any change
+document.addEventListener('input', e => {
+  if (e.target.matches('[data-k]')) {
+    dirty = true;
+    setStatus('未保存の変更があります', 'error');
+  }
+});
+
+reloadBtn.addEventListener('click', async () => {
+  if (dirty && !confirm('未保存の変更があります。本当にリロードしますか？')) return;
+  await loadContent();
+});
+
+saveBtn.addEventListener('click', async () => {
+  saveBtn.disabled = true;
+  setStatus('保存中…');
+  const content = {};
+  document.querySelectorAll('[data-k]').forEach(el => {
+    setNested(content, el.dataset.k, el.value);
+  });
+  try {
+    const r = await fetch('/api/content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Edit-Password': pw },
+      body: JSON.stringify({ content })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Unknown error');
+    dirty = false;
+    setStatus('保存しました ✓ 公開サイトに反映済み', 'ok');
+  } catch (err) {
+    setStatus('保存失敗: ' + err.message, 'error');
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+window.addEventListener('beforeunload', e => {
+  if (dirty) { e.preventDefault(); return e.returnValue = ''; }
+});
+
+// Auto-login if we have a stored pw
+if (pw) tryLogin(pw).catch(() => {
+  pw = '';
+  sessionStorage.removeItem('takezo_pw');
+});
+</script>
+</body>
+</html>

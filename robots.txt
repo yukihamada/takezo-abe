@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /assets/video/
+
+Sitemap: https://takezo.jiuflow.com/sitemap.xml
