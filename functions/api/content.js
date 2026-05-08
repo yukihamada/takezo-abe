@@ -3,6 +3,10 @@
 // POST → updates the content JSON (requires X-Edit-Password header)
 
 const CONTENT_KEY = 'site-content-v1';
+const ALLOWED_ORIGINS = new Set([
+  'https://takezo.jiuflow.com',
+  'https://takezo-abe.pages.dev'
+]);
 
 const DEFAULT_CONTENT = {
   hero: {
@@ -68,58 +72,94 @@ const DEFAULT_CONTENT = {
   }
 };
 
-async function getContent(env) {
-  if (!env.CONTENT) return DEFAULT_CONTENT;
-  const stored = await env.CONTENT.get(CONTENT_KEY, 'json');
-  return stored || DEFAULT_CONTENT;
+// === Helpers ===
+
+// Constant-time string comparison (timing-attack safe)
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
-function jsonResponse(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Edit-Password'
+// HTML sanitizer — allowlist of safe tags only.
+// Strips <script>, on* event handlers, javascript: URLs, and disallowed tags.
+const ALLOWED_TAGS = new Set(['br', 'strong', 'b', 'em', 'i', 'a', 'span']);
+const ALLOWED_ATTRS = {
+  a: new Set(['href', 'target', 'rel']),
+  span: new Set(['class']),
+  em: new Set(['class', 'style']),
+  strong: new Set(['class'])
+};
+const ALLOWED_STYLE_PROPS = new Set(['color']);
+const SAFE_URL_RE = /^(https?:|mailto:|tel:|#|\/)/i;
+
+function sanitizeHtml(input) {
+  if (typeof input !== 'string') return '';
+  // Remove script blocks entirely (even if broken)
+  let s = input.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // Remove HTML comments (could hide payloads in some parsers)
+  s = s.replace(/<!--[\s\S]*?-->/g, '');
+
+  // Walk tags. Use regex-based parser sufficient for trusted-author input.
+  return s.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*?)\/?>/g, (full, slash, tagName, rest) => {
+    const tag = tagName.toLowerCase();
+    if (!ALLOWED_TAGS.has(tag)) return '';
+    if (slash === '/') return `</${tag}>`;
+    // Parse attributes
+    const allowed = ALLOWED_ATTRS[tag] || new Set();
+    let outAttrs = '';
+    const attrRe = /([a-zA-Z_:][a-zA-Z0-9_:.-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/g;
+    let m;
+    while ((m = attrRe.exec(rest)) !== null) {
+      const name = m[1].toLowerCase();
+      let value = (m[3] !== undefined ? m[3] : m[4] !== undefined ? m[4] : m[5]) || '';
+      // Strip on* event handlers always
+      if (name.startsWith('on')) continue;
+      if (!allowed.has(name)) continue;
+      // href/src URL validation
+      if (name === 'href' || name === 'src') {
+        if (!SAFE_URL_RE.test(value.trim())) continue;
+      }
+      // style: only allow safe properties (color)
+      if (name === 'style') {
+        const safe = value.split(';').map(p => p.trim()).filter(p => {
+          const colon = p.indexOf(':');
+          if (colon === -1) return false;
+          const prop = p.slice(0, colon).trim().toLowerCase();
+          const val = p.slice(colon + 1).trim();
+          if (!ALLOWED_STYLE_PROPS.has(prop)) return false;
+          // Block url() and expressions
+          if (/url\s*\(|expression\s*\(|@import|javascript:/i.test(val)) return false;
+          return true;
+        }).join('; ');
+        if (!safe) continue;
+        value = safe;
+      }
+      // Force rel="noopener" for target="_blank"
+      outAttrs += ` ${name}="${value.replace(/"/g, '&quot;')}"`;
     }
+    if (tag === 'a' && /target=["']_blank["']/.test(outAttrs) && !/rel=/.test(outAttrs)) {
+      outAttrs += ' rel="noopener noreferrer"';
+    }
+    // self-closing for void tags
+    if (tag === 'br') return '<br>';
+    return `<${tag}${outAttrs}>`;
   });
 }
 
-export async function onRequestOptions() {
-  return jsonResponse({ ok: true });
-}
-
-export async function onRequestGet({ env }) {
-  const content = await getContent(env);
-  return jsonResponse({ ok: true, content });
-}
-
-export async function onRequestPost({ request, env }) {
-  const password = request.headers.get('X-Edit-Password') || '';
-  if (!env.EDIT_PASSWORD) {
-    return jsonResponse({ ok: false, error: 'Server misconfigured: EDIT_PASSWORD not set' }, 500);
+function sanitizeContentDeep(value) {
+  if (typeof value === 'string') return sanitizeHtml(value);
+  if (Array.isArray(value)) return value.map(sanitizeContentDeep);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const k of Object.keys(value)) out[k] = sanitizeContentDeep(value[k]);
+    return out;
   }
-  if (password !== env.EDIT_PASSWORD) {
-    return jsonResponse({ ok: false, error: 'Invalid password' }, 401);
-  }
-  if (!env.CONTENT) {
-    return jsonResponse({ ok: false, error: 'KV not bound' }, 500);
-  }
-
-  let body;
-  try { body = await request.json(); }
-  catch { return jsonResponse({ ok: false, error: 'Invalid JSON' }, 400); }
-
-  if (!body || typeof body !== 'object' || !body.content) {
-    return jsonResponse({ ok: false, error: 'Missing content' }, 400);
-  }
-
-  // Merge with defaults to keep schema integrity
-  const merged = mergeDeep(DEFAULT_CONTENT, body.content);
-  await env.CONTENT.put(CONTENT_KEY, JSON.stringify(merged));
-  return jsonResponse({ ok: true, content: merged, savedAt: new Date().toISOString() });
+  return value;
 }
 
 function mergeDeep(target, source) {
@@ -133,4 +173,126 @@ function mergeDeep(target, source) {
     }
   }
   return out;
+}
+
+async function getContent(env) {
+  if (!env.CONTENT) return DEFAULT_CONTENT;
+  const stored = await env.CONTENT.get(CONTENT_KEY, 'json');
+  return stored || DEFAULT_CONTENT;
+}
+
+function corsHeaders(origin) {
+  const ok = origin && ALLOWED_ORIGINS.has(origin);
+  return {
+    'Access-Control-Allow-Origin': ok ? origin : 'https://takezo.jiuflow.com',
+    'Vary': 'Origin',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Edit-Password',
+    'Access-Control-Max-Age': '86400'
+  };
+}
+
+function jsonResponse(obj, { status = 200, origin = '' } = {}) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...corsHeaders(origin)
+    }
+  });
+}
+
+// === Rate limiting (KV-backed) ===
+// 5 failed attempts per IP per 15min → block 15min
+async function rateCheck(env, ip) {
+  if (!env.CONTENT || !ip) return { allowed: true, remaining: 5 };
+  const key = `rate:auth:${ip}`;
+  const raw = await env.CONTENT.get(key, 'json');
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  if (raw && raw.until && raw.until > now) {
+    return { allowed: false, retryAfter: Math.ceil((raw.until - now) / 1000) };
+  }
+  const fails = (raw && raw.windowStart && now - raw.windowStart < windowMs) ? raw.fails : 0;
+  return { allowed: true, fails, windowStart: raw?.windowStart || now };
+}
+async function rateRecordFail(env, ip, state) {
+  if (!env.CONTENT || !ip) return;
+  const fails = (state.fails || 0) + 1;
+  const windowMs = 15 * 60 * 1000;
+  const key = `rate:auth:${ip}`;
+  if (fails >= 5) {
+    const until = Date.now() + windowMs;
+    await env.CONTENT.put(key, JSON.stringify({ until }), { expirationTtl: 16 * 60 });
+  } else {
+    await env.CONTENT.put(key, JSON.stringify({
+      fails, windowStart: state.windowStart || Date.now()
+    }), { expirationTtl: 16 * 60 });
+  }
+}
+async function rateClear(env, ip) {
+  if (!env.CONTENT || !ip) return;
+  await env.CONTENT.delete(`rate:auth:${ip}`);
+}
+
+// === Handlers ===
+
+export async function onRequestOptions({ request }) {
+  return jsonResponse({ ok: true }, { origin: request.headers.get('Origin') || '' });
+}
+
+export async function onRequestGet({ request, env }) {
+  const origin = request.headers.get('Origin') || '';
+  const content = await getContent(env);
+  return jsonResponse({ ok: true, content }, { origin });
+}
+
+export async function onRequestPost({ request, env }) {
+  const origin = request.headers.get('Origin') || '';
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+
+  // Rate-limit gate first
+  const rate = await rateCheck(env, ip);
+  if (!rate.allowed) {
+    return jsonResponse({ ok: false, error: `Too many attempts. Retry in ${rate.retryAfter}s.` },
+      { status: 429, origin });
+  }
+
+  if (!env.EDIT_PASSWORD) {
+    return jsonResponse({ ok: false, error: 'Server misconfigured' }, { status: 500, origin });
+  }
+
+  const password = request.headers.get('X-Edit-Password') || '';
+  if (!timingSafeEqual(password, env.EDIT_PASSWORD)) {
+    await rateRecordFail(env, ip, rate);
+    return jsonResponse({ ok: false, error: 'Invalid password' }, { status: 401, origin });
+  }
+
+  // Success → clear failure counter
+  await rateClear(env, ip);
+
+  if (!env.CONTENT) {
+    return jsonResponse({ ok: false, error: 'KV not bound' }, { status: 500, origin });
+  }
+
+  let body;
+  try { body = await request.json(); }
+  catch { return jsonResponse({ ok: false, error: 'Invalid JSON' }, { status: 400, origin }); }
+
+  if (!body || typeof body !== 'object' || !body.content) {
+    return jsonResponse({ ok: false, error: 'Missing content' }, { status: 400, origin });
+  }
+
+  // Reject pathological payloads
+  const serialized = JSON.stringify(body.content);
+  if (serialized.length > 200_000) {
+    return jsonResponse({ ok: false, error: 'Payload too large' }, { status: 413, origin });
+  }
+
+  // Sanitize all string fields, then merge with defaults
+  const sanitized = sanitizeContentDeep(body.content);
+  const merged = mergeDeep(DEFAULT_CONTENT, sanitized);
+  await env.CONTENT.put(CONTENT_KEY, JSON.stringify(merged));
+  return jsonResponse({ ok: true, content: merged, savedAt: new Date().toISOString() }, { origin });
 }
