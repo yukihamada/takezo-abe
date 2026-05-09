@@ -121,6 +121,9 @@ export async function onRequestGet({ request, env }) {
         byUAxCountry: httpRequestsAdaptiveGroups(limit: 200, filter: {datetime_geq: $start, datetime_lt: $end, clientRequestHTTPHost: "${HOST}"}, orderBy: [count_DESC]) {
           count sum { visits } dimensions { userAgent clientCountryName }
         }
+        byUAxCountryHTML: httpRequestsAdaptiveGroups(limit: 200, filter: {datetime_geq: $start, datetime_lt: $end, clientRequestHTTPHost: "${HOST}", clientRequestPath_in: ["/", "/en/", "/en"], edgeResponseStatus: 200}, orderBy: [count_DESC]) {
+          count sum { visits } dimensions { userAgent clientCountryName }
+        }
         byUAxPath: httpRequestsAdaptiveGroups(limit: 200, filter: {datetime_geq: $start, datetime_lt: $end, clientRequestHTTPHost: "${HOST}", edgeResponseStatus: 200}, orderBy: [count_DESC]) {
           count dimensions { userAgent clientRequestPath }
         }
@@ -270,7 +273,8 @@ export async function onRequestGet({ request, env }) {
     const last24hHuman = {
       totals: { count: totalsHuman.count, sum: { visits: totalsHuman.visits, edgeResponseBytes: totalsHuman.bytes } },
       _note: 'リクエスト数は / と /en/ への HTML 表示のみ集計。アセット・スキャナ的パスは除外。',
-      byCountry: aggBy(z.byUAxCountry || [], 'clientCountryName', true).map(r => ({ count: r.count, sum: { visits: r.visits }, dimensions: { clientCountryName: r.key } })).slice(0, 10),
+      // byCountry uses HTML-restricted query so scanners hitting random paths don't show up
+      byCountry: aggBy(z.byUAxCountryHTML || [], 'clientCountryName', true).map(r => ({ count: r.count, sum: { visits: r.visits }, dimensions: { clientCountryName: r.key } })).slice(0, 10),
       byPath:    aggBy(z.byUAxPath || [],    'clientRequestPath', true).map(r => ({ count: r.count, dimensions: { clientRequestPath: r.key } })).slice(0, 15),
       byDevice:  aggBy(z.byUAxDevice || [],  'clientDeviceType', true).map(r => ({ count: r.count, dimensions: { clientDeviceType: r.key } })).slice(0, 5),
       byBrowser: aggBy(z.byUAxBrowser || [], 'userAgentBrowser', true).map(r => ({ count: r.count, dimensions: { userAgentBrowser: r.key } })).slice(0, 8),
