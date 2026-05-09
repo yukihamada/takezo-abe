@@ -67,8 +67,17 @@ const DEFAULT_CONTENT = {
   sns: {
     instagram: 'https://www.instagram.com/',
     twitter: '',
-    youtube: '',
+    note: '',
     email: 'hello@takezo-abe.com'
+  },
+  images: {
+    hero: '',         // 1) Hero photo (right side of top section)
+    profile: '',      // 2) Profile section photo
+    g_portrait: '',   // 3) Gallery — 試合前の集中
+    g_action: '',     // 4) Gallery — スパーリング
+    g_podium: '',     // 5) Gallery — 表彰台
+    g_bb: '',         // 6) Gallery — 黒帯昇格
+    g_sweep: ''       // 7) Gallery — SWEEP集合
   }
 };
 

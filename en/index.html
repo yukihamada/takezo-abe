@@ -355,7 +355,7 @@
       </div>
     </div>
     <div class="hero-photo">
-      <img src="../assets/img/crops/hero.jpg" alt="Abe Takezo holding his gold medal at the Abu Dhabi World Professional Jiu-Jitsu Championship" loading="eager" fetchpriority="high">
+      <img src="../assets/img/crops/hero.jpg" alt="Abe Takezo holding his gold medal at the Abu Dhabi World Professional Jiu-Jitsu Championship" loading="eager" fetchpriority="high" data-img="hero">
       <div class="hero-photo-caption">Abu Dhabi · 2025 · World Champion</div>
     </div>
   </div>
@@ -531,24 +531,24 @@
     <h2 class="section-title">Moments on the mat</h2>
     <p class="section-lead">The silence before a match. The heat of a roll. Laughter with brothers and sisters.<br>This mat is open to anyone.</p>
     <div class="bento">
-      <button class="b-tile b-tall" data-src="../assets/img/portrait-focus.jpg">
-        <img src="../assets/img/crops/g-portrait-focus.jpg" alt="Takezo seated on the mat, focused before his match" loading="lazy">
+      <button class="b-tile b-tall" data-src="../assets/img/crops/g-portrait-focus.jpg" data-src-key="g_portrait">
+        <img src="../assets/img/crops/g-portrait-focus.jpg" alt="Takezo seated on the mat, focused before his match" loading="lazy" data-img="g_portrait">
         <span class="b-cap">Before the match · Abu Dhabi</span>
       </button>
-      <button class="b-tile b-tall" data-src="../assets/img/action-sparring.jpg">
-        <img src="../assets/img/crops/g-action.jpg" alt="Live sparring against a Gracie Barra opponent" loading="lazy">
+      <button class="b-tile b-tall" data-src="../assets/img/crops/g-action.jpg" data-src-key="g_action">
+        <img src="../assets/img/crops/g-action.jpg" alt="Live sparring against a Gracie Barra opponent" loading="lazy" data-img="g_action">
         <span class="b-cap">Sparring · Live roll</span>
       </button>
-      <button class="b-tile b-wide" data-src="../assets/img/podium-laugh.jpg">
-        <img src="../assets/img/crops/g-podium.jpg" alt="Three athletes celebrate on the Abu Dhabi podium" loading="lazy">
+      <button class="b-tile b-wide" data-src="../assets/img/crops/g-podium.jpg" data-src-key="g_podium">
+        <img src="../assets/img/crops/g-podium.jpg" alt="Three athletes celebrate on the Abu Dhabi podium" loading="lazy" data-img="g_podium">
         <span class="b-cap">Podium · Gold Medal</span>
       </button>
-      <button class="b-tile b-square" data-src="../assets/img/blackbelt-friends.jpg">
-        <img src="../assets/img/crops/g-bb-friends.jpg" alt="Holding the Black Belt certificate with friends" loading="lazy">
+      <button class="b-tile b-square" data-src="../assets/img/crops/g-bb-friends.jpg" data-src-key="g_bb">
+        <img src="../assets/img/crops/g-bb-friends.jpg" alt="Holding the Black Belt certificate with friends" loading="lazy" data-img="g_bb">
         <span class="b-cap">Black Belt · 2025</span>
       </button>
-      <button class="b-tile b-square" data-src="../assets/img/sweep-team.jpg">
-        <img src="../assets/img/crops/g-sweep.jpg" alt="SWEEP Jiu-Jitsu Academy family photo" loading="lazy">
+      <button class="b-tile b-square" data-src="../assets/img/crops/g-sweep.jpg" data-src-key="g_sweep">
+        <img src="../assets/img/crops/g-sweep.jpg" alt="SWEEP Jiu-Jitsu Academy family photo" loading="lazy" data-img="g_sweep">
         <span class="b-cap">SWEEP · Tokyo</span>
       </button>
     </div>
@@ -563,7 +563,7 @@
 <section id="profile" class="profile">
   <div class="wrap profile-grid">
     <div class="profile-photo">
-      <img src="../assets/img/crops/profile.jpg" alt="Portrait of Abe Takezo with his medal" loading="lazy">
+      <img src="../assets/img/crops/profile.jpg" alt="Portrait of Abe Takezo with his medal" loading="lazy" data-img="profile">
     </div>
     <div>
       <div class="section-label">Profile</div>
@@ -708,12 +708,22 @@
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && lb.classList.contains('open')) closeLb(); });
   }
 
-  // SNS bindings (read from /api/content)
+  // SNS + image bindings (read from /api/content)
   fetch('/api/content', { cache: 'no-store' }).then(r => r.json()).then(j => {
-    const sns = j?.content?.sns || {};
+    const c = j?.content || {};
+    const sns = c.sns || {};
     const ig = document.querySelector('a[href*="instagram.com"]');
     if (ig && sns.instagram) ig.href = sns.instagram;
     if (sns.email) document.querySelectorAll('a[href^="mailto:"]').forEach(a => a.href = 'mailto:' + sns.email);
+    const imgs = c.images || {};
+    document.querySelectorAll('[data-img]').forEach(el => {
+      const k = el.dataset.img;
+      if (imgs[k]) el.src = imgs[k];
+    });
+    document.querySelectorAll('.b-tile[data-src-key]').forEach(btn => {
+      const k = btn.dataset.srcKey;
+      if (imgs[k]) btn.dataset.src = imgs[k];
+    });
   }).catch(() => {});
 
   document.querySelectorAll('a[href^="#"]').forEach(a => {

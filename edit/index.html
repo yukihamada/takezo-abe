@@ -89,6 +89,36 @@
     color: var(--accent); margin-left: auto;
   }
   code { background: var(--bg-warm); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+
+  .img-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+  }
+  .img-slot {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--bg);
+  }
+  .img-slot .label {
+    font-weight: 600; font-size: 12px; margin: 0 0 8px;
+    color: var(--ink-soft);
+  }
+  .img-slot .preview {
+    aspect-ratio: 4/3;
+    background: var(--bg-warm);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .img-slot .preview img { width: 100%; height: 100%; object-fit: cover; }
+  .img-slot input[type="file"] { font-size: 11px; width: 100%; }
+  .img-slot .upload-status { font-size: 11px; margin-top: 6px; min-height: 14px; }
+  .img-slot .upload-status.ok { color: #1a8553; }
+  .img-slot .upload-status.error { color: var(--accent); }
+  .img-slot.uploading { opacity: 0.6; }
 </style>
 </head>
 <body>
@@ -243,10 +273,19 @@
       <input type="text" data-k="sns.instagram" placeholder="https://www.instagram.com/...">
       <label>X (Twitter) URL</label>
       <input type="text" data-k="sns.twitter" placeholder="https://x.com/...">
-      <label>YouTube URL</label>
-      <input type="text" data-k="sns.youtube" placeholder="https://youtube.com/@...">
+      <label>note URL</label>
+      <input type="text" data-k="sns.note" placeholder="https://note.com/...">
       <label>連絡先メール</label>
       <input type="text" data-k="sns.email">
+    </div>
+
+    <h2>📷 画像</h2>
+    <div class="info-box">
+      JPG / PNG / WebP / GIF（最大8MB）。アップロードすると即反映されます。<br>
+      アップロードしないスロットは現在のデフォルト画像のまま。
+    </div>
+    <div class="card">
+      <div class="img-grid" id="img-grid"></div>
     </div>
   </form>
 
@@ -290,6 +329,78 @@ function getNested(obj, path) {
   return path.split('.').reduce((o,k) => o ? o[k] : undefined, obj);
 }
 
+const IMAGE_SLOTS = [
+  { key: 'hero',       label: 'ヒーロー (右上の写真)',                 fallback: '/assets/img/crops/hero.jpg' },
+  { key: 'profile',    label: 'プロフィール (赤背景)',                 fallback: '/assets/img/crops/profile.jpg' },
+  { key: 'g_portrait', label: 'ギャラリー① 試合前の集中',              fallback: '/assets/img/crops/g-portrait-focus.jpg' },
+  { key: 'g_action',   label: 'ギャラリー② スパーリング',              fallback: '/assets/img/crops/g-action.jpg' },
+  { key: 'g_podium',   label: 'ギャラリー③ 表彰台',                    fallback: '/assets/img/crops/g-podium.jpg' },
+  { key: 'g_bb',       label: 'ギャラリー④ 黒帯昇格',                  fallback: '/assets/img/crops/g-bb-friends.jpg' },
+  { key: 'g_sweep',    label: 'ギャラリー⑤ SWEEP集合',                 fallback: '/assets/img/crops/g-sweep.jpg' }
+];
+
+function buildImageGrid(currentImages) {
+  const grid = document.getElementById('img-grid');
+  grid.innerHTML = '';
+  IMAGE_SLOTS.forEach(slot => {
+    const stored = currentImages?.[slot.key];
+    const src = stored ? `${stored}?t=${Date.now()}` : slot.fallback;
+    const div = document.createElement('div');
+    div.className = 'img-slot';
+    div.dataset.key = slot.key;
+    div.innerHTML = `
+      <div class="label">${slot.label}</div>
+      <div class="preview"><img src="${src}" alt="" /></div>
+      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif">
+      <div class="upload-status"></div>
+    `;
+    const fileInput = div.querySelector('input[type="file"]');
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const status = div.querySelector('.upload-status');
+      const preview = div.querySelector('.preview img');
+      div.classList.add('uploading');
+      status.textContent = `アップロード中… (${(file.size/1024/1024).toFixed(1)}MB)`;
+      status.className = 'upload-status';
+      try {
+        const r = await fetch(`/api/images/${slot.key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type, 'X-Edit-Password': pw },
+          body: file
+        });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'failed');
+        // Update content.images.<key> in our content via save
+        const newUrl = j.url;
+        // Trigger immediate save of the image URL into content
+        const saveRes = await fetch('/api/content', { cache: 'no-store' });
+        const saveJ = await saveRes.json();
+        const c = saveJ.content || {};
+        c.images = c.images || {};
+        c.images[slot.key] = newUrl;
+        const r2 = await fetch('/api/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Edit-Password': pw },
+          body: JSON.stringify({ content: c })
+        });
+        const j2 = await r2.json();
+        if (!j2.ok) throw new Error(j2.error || 'save failed');
+        preview.src = `${newUrl}?t=${Date.now()}`;
+        status.textContent = `✓ アップロード完了 (${(j.bytes/1024/1024).toFixed(2)}MB)`;
+        status.className = 'upload-status ok';
+        fileInput.value = '';
+      } catch (err) {
+        status.textContent = '✗ ' + (err.message || 'エラー');
+        status.className = 'upload-status error';
+      } finally {
+        div.classList.remove('uploading');
+      }
+    });
+    grid.appendChild(div);
+  });
+}
+
 async function loadContent() {
   const r = await fetch('/api/content', { cache: 'no-store' });
   const j = await r.json();
@@ -298,6 +409,7 @@ async function loadContent() {
     const v = getNested(c, el.dataset.k);
     if (v !== undefined && v !== null) el.value = v;
   });
+  buildImageGrid(c.images || {});
   dirty = false;
   setStatus('未保存の変更なし');
 }
