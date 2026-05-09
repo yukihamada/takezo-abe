@@ -46,7 +46,9 @@ export async function onRequestGet({ params, env }) {
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
   headers.set('etag', obj.httpEtag);
-  if (!headers.get('content-type')) headers.set('content-type', 'image/jpeg');
+  // Ensure content-type is from R2 metadata, falling back to image/jpeg
+  const stored = obj.httpMetadata?.contentType;
+  headers.set('Content-Type', stored || 'image/jpeg');
   headers.set('Cache-Control', 'public, max-age=600, s-maxage=86400, stale-while-revalidate=86400');
   headers.set('Access-Control-Allow-Origin', '*');
   return new Response(obj.body, { headers });
