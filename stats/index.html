@@ -107,6 +107,25 @@
     color: var(--ink-mute);
   }
   .status.error { color: var(--accent); }
+
+  .mode {
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--line); padding: 8px 16px;
+    border-radius: 999px; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+  }
+  .mode.active {
+    background: var(--ink); color: #fff;
+    border-color: var(--ink);
+  }
+  .mode:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+  .ua-cell {
+    font-size: 11px; line-height: 1.4;
+    max-width: 60ch; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; font-family: ui-monospace, 'SF Mono', monospace;
+    color: var(--ink-soft);
+  }
 </style>
 </head>
 <body>
@@ -135,6 +154,13 @@
       <a href="/edit/">編集画面 →</a>
       <button class="ghost" id="refresh">更新</button>
     </div>
+  </div>
+
+  <div class="card" style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom: 16px;">
+    <strong style="font-size:13px;">表示モード:</strong>
+    <button id="mode-human" class="mode active">🧑 人間のみ <span style="opacity:.6">推定</span></button>
+    <button id="mode-all" class="mode">🌐 全部 <span style="opacity:.6">ボット込み</span></button>
+    <span id="mode-note" class="status" style="margin-left:auto; font-size:11px;"></span>
   </div>
 
   <h2>過去24時間</h2>
@@ -186,14 +212,26 @@
     <table id="daily-table" style="margin-top:12px;"><thead><tr><th>日付</th><th class="num">訪問</th><th class="num">リクエスト</th><th class="num">転送量</th></tr></thead><tbody></tbody></table>
   </div>
 
+  <h2 style="margin-top: 32px;">🤖 検出されたボット</h2>
+  <div class="card">
+    <p class="lead" style="margin: 0 0 12px;">UAパターンで自動的にボット判定したリクエスト。実際のサイト解析からは除外しています。</p>
+    <table id="bots"><thead><tr><th>User-Agent</th><th class="num">リクエスト</th></tr></thead><tbody></tbody></table>
+    <p class="lead" style="margin: 12px 0 0; font-size: 11px;">
+      <strong id="bot-summary"></strong>
+    </p>
+  </div>
+
   <p class="footer-note">
     データソース: Cloudflare Analytics (zone: jiuflow.com / host: takezo.jiuflow.com)<br>
-    集計には数分の遅延があります。Bot トラフィックは含まれます（CF が Verified Bot として識別したものは除外）。
+    集計には数分の遅延があります。<br>
+    人間/ボットの判別は User-Agent パターンマッチングによる推定値です（無料プランのため Bot Score は使用不可）。
   </p>
 </div>
 
 <script>
 let pw = sessionStorage.getItem('takezo_pw') || '';
+let mode = sessionStorage.getItem('takezo_mode') || 'human';
+let cache = null;
 
 const fmt = n => (n||0).toLocaleString('ja-JP');
 const fmtBytes = n => {
@@ -213,66 +251,92 @@ async function fetchStats() {
   return r.json();
 }
 
+function setMode(newMode) {
+  mode = newMode;
+  sessionStorage.setItem('takezo_mode', mode);
+  document.getElementById('mode-human').classList.toggle('active', mode === 'human');
+  document.getElementById('mode-all').classList.toggle('active', mode === 'all');
+  if (cache) render(cache);
+}
+
 function render(d) {
+  cache = d;
   const updated = new Date(d.generatedAt);
   document.getElementById('updated').textContent = '取得: ' + updated.toLocaleString('ja-JP', { hour:'2-digit', minute:'2-digit' });
 
+  const v24 = mode === 'human' ? d.last24h_human : d.last24h;
+  const v7  = mode === 'human' ? d.last7d_human  : d.last7d;
+
+  const note = mode === 'human'
+    ? `🧑 人間のみ（推定）— ${fmt(d.last24h_bots.totals.count)}件のボット/自動アクセスを除外`
+    : `🌐 全部 — ボット込みの生データ（人間: ${fmt(d.last24h_human.totals.count)} / ボット: ${fmt(d.last24h_bots.totals.count)}）`;
+  document.getElementById('mode-note').textContent = note;
+
   // 24h totals
-  const t = d.last24h.totals;
+  const t = v24.totals;
   document.getElementById('t-visits').textContent   = fmt(t.sum?.visits);
   document.getElementById('t-requests').textContent = fmt(t.count);
   document.getElementById('t-bytes').textContent    = fmtBytes(t.sum?.edgeResponseBytes);
   document.getElementById('t-perhour').textContent  = fmt(Math.round((t.sum?.visits || 0) / 24));
 
   // Top paths
-  const maxP = Math.max(1, ...(d.last24h.byPath.map(x => x.count)));
-  document.querySelector('#paths tbody').innerHTML = d.last24h.byPath.slice(0,15).map(x => {
+  const maxP = Math.max(1, ...((v24.byPath || []).map(x => x.count)));
+  document.querySelector('#paths tbody').innerHTML = (v24.byPath || []).slice(0,15).map(x => {
     const pct = (x.count/maxP)*100;
     return `<tr><td>${esc(x.dimensions.clientRequestPath)}</td><td class="num">${fmt(x.count)} <span class="bar" style="width:${pct*0.6}px"></span></td></tr>`;
   }).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">データなし</td></tr>';
 
   // Countries
-  const maxC = Math.max(1, ...(d.last24h.byCountry.map(x => x.sum?.visits || 0)));
-  document.querySelector('#countries tbody').innerHTML = d.last24h.byCountry.slice(0,10).map(x => {
-    const v = x.sum?.visits || 0;
-    return `<tr><td>${esc(x.dimensions.clientCountryName || '不明')}</td><td class="num">${fmt(v)} <span class="bar" style="width:${(v/maxC)*60}px"></span></td></tr>`;
+  const maxC = Math.max(1, ...((v24.byCountry || []).map(x => x.sum?.visits || 0)));
+  document.querySelector('#countries tbody').innerHTML = (v24.byCountry || []).slice(0,10).map(x => {
+    const visits = x.sum?.visits || 0;
+    return `<tr><td>${esc(x.dimensions.clientCountryName || '不明')}</td><td class="num">${fmt(visits)} <span class="bar" style="width:${(visits/maxC)*60}px"></span></td></tr>`;
   }).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">データなし</td></tr>';
 
   // Devices
-  document.querySelector('#devices tbody').innerHTML = d.last24h.byDevice.slice(0,5).map(x =>
+  document.querySelector('#devices tbody').innerHTML = (v24.byDevice || []).slice(0,5).map(x =>
     `<tr><td>${esc(x.dimensions.clientDeviceType || '不明')}</td><td class="num">${fmt(x.count)}</td></tr>`
-  ).join('');
+  ).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">—</td></tr>';
 
   // Browsers
-  document.querySelector('#browsers tbody').innerHTML = d.last24h.byBrowser.slice(0,8).map(x =>
+  document.querySelector('#browsers tbody').innerHTML = (v24.byBrowser || []).slice(0,8).map(x =>
     `<tr><td>${esc(x.dimensions.userAgentBrowser || '不明')}</td><td class="num">${fmt(x.count)}</td></tr>`
-  ).join('');
+  ).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">—</td></tr>';
 
   // Hourly chart
-  drawChart('hourly-chart', d.last24h.byHour.map(h => ({
+  drawChart('hourly-chart', (v24.byHour || []).map(h => ({
     x: new Date(h.dimensions.datetimeHour).getTime(),
     y: h.sum?.visits || 0
   })), 'visits');
 
   // 7d totals
-  const w = d.last7d.totals;
+  const w = v7.totals;
   document.getElementById('w-visits').textContent   = fmt(w.visits);
   document.getElementById('w-requests').textContent = fmt(w.requests);
   document.getElementById('w-bytes').textContent    = fmtBytes(w.bytes);
   document.getElementById('w-avg').textContent      = fmt(Math.round(w.visits/7));
 
   // Daily table
-  document.querySelector('#daily-table tbody').innerHTML = d.last7d.days.map(day => {
+  document.querySelector('#daily-table tbody').innerHTML = v7.days.map(day => {
     const date = new Date(day.date + 'T00:00:00');
     const label = `${date.getMonth()+1}/${date.getDate()} (${['日','月','火','水','木','金','土'][date.getDay()]})`;
     return `<tr><td>${label}</td><td class="num">${fmt(day.visits)}</td><td class="num">${fmt(day.requests)}</td><td class="num">${fmtBytes(day.bytes)}</td></tr>`;
   }).join('');
 
-  // Daily chart
-  drawChart('daily-chart', d.last7d.days.map(day => ({
+  drawChart('daily-chart', v7.days.map(day => ({
     x: new Date(day.date + 'T00:00:00').getTime(),
     y: day.visits
   })), 'visits');
+
+  // Bots panel (always shows the bot data)
+  const bots = d.last24h_bots;
+  document.querySelector('#bots tbody').innerHTML = (bots.top || []).map(b =>
+    `<tr><td class="ua-cell" title="${esc(b.ua)}">${esc(b.ua.slice(0,80))}</td><td class="num">${fmt(b.count)}</td></tr>`
+  ).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">ボット検出なし</td></tr>';
+  const totalAll = d.last24h.totals.count;
+  const pct = totalAll ? (bots.totals.count / totalAll * 100).toFixed(1) : 0;
+  document.getElementById('bot-summary').textContent =
+    `合計 ${fmt(bots.totals.count)} 件のボット (全体の ${pct}%) を検出。これらは「人間のみ」表示から除外されています。`;
 }
 
 function esc(s) {
@@ -351,6 +415,9 @@ document.getElementById('login-form').addEventListener('submit', async e => {
   await load();
 });
 document.getElementById('refresh').addEventListener('click', load);
+document.getElementById('mode-human').addEventListener('click', () => setMode('human'));
+document.getElementById('mode-all').addEventListener('click', () => setMode('all'));
+setMode(mode); // initialize highlight
 
 if (pw) load();
 </script>
