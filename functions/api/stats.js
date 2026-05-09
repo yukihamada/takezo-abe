@@ -76,6 +76,14 @@ function isLikelyBot(ua) {
   return BOT_UA_PATTERNS.some(re => re.test(ua));
 }
 
+// Paths that represent actual human page-views.
+// Everything else (assets, .well-known/acme-challenge, /api/*, /cdn-cgi/*, /edit/*, /stats/*) is excluded
+// from the "human visitor" count so scanners hitting random paths don't inflate the number.
+const HUMAN_PAGE_PATHS = new Set(['/', '/en/', '/en']);
+function isHumanPagePath(path) {
+  return HUMAN_PAGE_PATHS.has(path);
+}
+
 export async function onRequestOptions({ request }) {
   return jsonResponse({ ok: true }, { origin: request.headers.get('Origin') || '' });
 }
@@ -137,23 +145,31 @@ export async function onRequestGet({ request, env }) {
     dayQueries.push(gql(token, `
       query($zone: String!, $start: Time!, $end: Time!) {
         viewer { zones(filter: {zoneTag: $zone}) {
-          httpRequestsAdaptiveGroups(limit: 200, filter: {datetime_geq: $start, datetime_lt: $end, clientRequestHTTPHost: "${HOST}"}, orderBy: [count_DESC]) {
+          all: httpRequestsAdaptiveGroups(limit: 200, filter: {datetime_geq: $start, datetime_lt: $end, clientRequestHTTPHost: "${HOST}"}, orderBy: [count_DESC]) {
             count sum { visits edgeResponseBytes } dimensions { userAgent }
+          }
+          pages: httpRequestsAdaptiveGroups(limit: 200, filter: {datetime_geq: $start, datetime_lt: $end, clientRequestHTTPHost: "${HOST}", edgeResponseStatus: 200}, orderBy: [count_DESC]) {
+            count dimensions { userAgent clientRequestPath }
           }
         } }
       }`, { zone, start: dayStart, end: dayEnd })
       .then(r => {
-        const rows = r?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups || [];
+        const z = r?.data?.viewer?.zones?.[0] || {};
+        const rows = z.all || [];
+        const pageRows = z.pages || [];
         const all = rows.reduce((acc, x) => ({
           requests: acc.requests + (x.count || 0),
           visits:   acc.visits   + (x.sum?.visits || 0),
           bytes:    acc.bytes    + (x.sum?.edgeResponseBytes || 0)
         }), { requests: 0, visits: 0, bytes: 0 });
-        const human = rows.filter(x => !isLikelyBot(x.dimensions.userAgent)).reduce((acc, x) => ({
-          requests: acc.requests + (x.count || 0),
-          visits:   acc.visits   + (x.sum?.visits || 0),
-          bytes:    acc.bytes    + (x.sum?.edgeResponseBytes || 0)
-        }), { requests: 0, visits: 0, bytes: 0 });
+        const humanByUA = rows.filter(x => !isLikelyBot(x.dimensions.userAgent)).reduce((acc, x) => ({
+          visits: acc.visits + (x.sum?.visits || 0),
+          bytes:  acc.bytes  + (x.sum?.edgeResponseBytes || 0)
+        }), { visits: 0, bytes: 0 });
+        const humanPageRequests = pageRows
+          .filter(x => !isLikelyBot(x.dimensions.userAgent) && isHumanPagePath(x.dimensions.clientRequestPath))
+          .reduce((acc, x) => acc + (x.count || 0), 0);
+        const human = { requests: humanPageRequests, visits: humanByUA.visits, bytes: humanByUA.bytes };
         return { date: dateOnly(dayStart), all, human };
       }));
   }
@@ -184,22 +200,51 @@ export async function onRequestGet({ request, env }) {
     };
 
     const byUA = z.byUA || [];
-    const humanUA = byUA.filter(x => !isLikelyBot(x.dimensions.userAgent));
-    const botUA   = byUA.filter(x =>  isLikelyBot(x.dimensions.userAgent));
+    const byUAxPath = z.byUAxPath || [];
 
+    // For "all" total: every request, every UA
     const sumOf = (rows) => rows.reduce((acc, x) => ({
       count: acc.count + (x.count || 0),
       visits: acc.visits + (x.sum?.visits || 0),
       bytes: acc.bytes + (x.sum?.edgeResponseBytes || 0)
     }), { count: 0, visits: 0, bytes: 0 });
 
-    const totalsAll   = sumOf(byUA);
-    const totalsHuman = sumOf(humanUA);
-    const totalsBot   = sumOf(botUA);
+    const humanRowsByUA = byUA.filter(x => !isLikelyBot(x.dimensions.userAgent));
+    const botRowsByUA   = byUA.filter(x =>  isLikelyBot(x.dimensions.userAgent));
 
-    // helper to aggregate by a dimension keyed by another dim, filtering by UA
+    // For HUMAN totals: only HTML page hits ("/" or "/en/") AND non-bot UA
+    // (UA breakdown is from byUAxPath which already restricted to status=200)
+    const humanPageRows = byUAxPath.filter(x =>
+      !isLikelyBot(x.dimensions.userAgent) &&
+      isHumanPagePath(x.dimensions.clientRequestPath)
+    );
+
+    const totalsAll   = sumOf(byUA);
+    const totalsBot   = sumOf(botRowsByUA);
+    // Human totals: requests = page-hits to /, /en/. Visits = sum.visits from byUA filtered.
+    // (We use humanRowsByUA's visits because adaptive doesn't have visits per (UA,path) — visits is a session metric.)
+    const totalsHumanPages = humanPageRows.reduce((acc, x) => ({
+      count: acc.count + (x.count || 0)
+    }), { count: 0 });
+    const totalsHumanByUA = sumOf(humanRowsByUA);
+    const totalsHuman = {
+      count: totalsHumanPages.count,        // request count = HTML page views by humans
+      visits: totalsHumanByUA.visits,       // visits = CF-estimated session count from non-bot UAs
+      bytes: totalsHumanByUA.bytes
+    };
+
+    // helper to aggregate by a dimension keyed by another dim, with optional UA + path filters.
+    // For "human" mode we additionally require path = "/" or "/en/" if pathDim is provided in the row.
     const aggBy = (rows, dim, humanOnly = false) => {
-      const filtered = humanOnly ? rows.filter(r => !isLikelyBot(r.dimensions.userAgent)) : rows;
+      let filtered = rows;
+      if (humanOnly) {
+        filtered = filtered.filter(r => !isLikelyBot(r.dimensions.userAgent));
+        // If row has a path dim, require it to be a real page
+        filtered = filtered.filter(r => {
+          const p = r.dimensions.clientRequestPath;
+          return p === undefined || isHumanPagePath(p);
+        });
+      }
       return sumRows(filtered, dim);
     };
 
@@ -224,6 +269,7 @@ export async function onRequestGet({ request, env }) {
 
     const last24hHuman = {
       totals: { count: totalsHuman.count, sum: { visits: totalsHuman.visits, edgeResponseBytes: totalsHuman.bytes } },
+      _note: 'リクエスト数は / と /en/ への HTML 表示のみ集計。アセット・スキャナ的パスは除外。',
       byCountry: aggBy(z.byUAxCountry || [], 'clientCountryName', true).map(r => ({ count: r.count, sum: { visits: r.visits }, dimensions: { clientCountryName: r.key } })).slice(0, 10),
       byPath:    aggBy(z.byUAxPath || [],    'clientRequestPath', true).map(r => ({ count: r.count, dimensions: { clientRequestPath: r.key } })).slice(0, 15),
       byDevice:  aggBy(z.byUAxDevice || [],  'clientDeviceType', true).map(r => ({ count: r.count, dimensions: { clientDeviceType: r.key } })).slice(0, 5),
