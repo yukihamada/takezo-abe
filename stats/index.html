@@ -212,6 +212,36 @@
     <table id="daily-table" style="margin-top:12px;"><thead><tr><th>日付</th><th class="num">訪問</th><th class="num">リクエスト</th><th class="num">転送量</th></tr></thead><tbody></tbody></table>
   </div>
 
+  <h2 style="margin-top: 32px;">📍 経由元・ブラウザ（過去7日間）</h2>
+  <p class="lead" style="margin: 0 0 14px;">
+    Cloudflare Web Analytics の Real User Monitoring データ。<br>
+    リファラ（referer）はブラウザが送ってきた場合のみ記録されます。LINE/Mail/Instagramなどのアプリ内ブラウザは、<strong>refererを送らない</strong>ため「直接アクセス」として表示されます（その場合、ブラウザ名で経路を推測：<code>ChromeMobileWebview</code> = LINEアプリ、など）。
+  </p>
+  <div class="grid grid-2" id="rum-section">
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">🔗 経由元 (Referrer)</h2>
+      <table id="rum-referers"><thead><tr><th>経由元ホスト</th><th class="num">PV</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">🌎 国 (RUM)</h2>
+      <table id="rum-countries"><thead><tr><th>国</th><th class="num">PV</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div class="grid grid-2" style="margin-top:16px;">
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">🌐 ブラウザ</h2>
+      <table id="rum-browsers"><thead><tr><th>ブラウザ</th><th class="num">PV</th></tr></thead><tbody></tbody></table>
+      <p class="lead" style="font-size:11px; margin-top:10px;">
+        <code>ChromeMobileWebview</code> = LINE/Twitterアプリ内ブラウザ<br>
+        <code>MobileSafari</code> = iPhone Safari
+      </p>
+    </div>
+    <div class="card">
+      <h2 style="margin: 0 0 10px;">💻 OS / デバイス</h2>
+      <table id="rum-os"><thead><tr><th>OS</th><th class="num">PV</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
   <h2 style="margin-top: 32px;">🤖 検出されたボット</h2>
   <div class="card">
     <p class="lead" style="margin: 0 0 12px;">UAパターンで自動的にボット判定したリクエスト。実際のサイト解析からは除外しています。</p>
@@ -327,6 +357,31 @@ function render(d) {
     x: new Date(day.date + 'T00:00:00').getTime(),
     y: day.visits
   })), 'visits');
+
+  // RUM panel — referrer / browser / OS / device
+  const rum = d.rum;
+  if (rum && !rum.error) {
+    const refs = rum.byReferer || [];
+    document.querySelector('#rum-referers tbody').innerHTML = refs.length ? refs.map(r => {
+      const h = r.host || '<span style="color:var(--ink-mute)">直接アクセス</span>';
+      const p = r.path || '';
+      return `<tr><td>${h}${p ? esc(p) : ''}</td><td class="num">${fmt(r.count)}</td></tr>`;
+    }).join('') : '<tr><td colspan="2" style="color:var(--ink-mute)">データ収集中</td></tr>';
+
+    document.querySelector('#rum-countries tbody').innerHTML = (rum.byCountry || []).map(r =>
+      `<tr><td>${esc(r.name)}</td><td class="num">${fmt(r.count)}</td></tr>`
+    ).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">—</td></tr>';
+
+    document.querySelector('#rum-browsers tbody').innerHTML = (rum.byBrowser || []).map(r =>
+      `<tr><td>${esc(r.name)}</td><td class="num">${fmt(r.count)}</td></tr>`
+    ).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">—</td></tr>';
+
+    document.querySelector('#rum-os tbody').innerHTML = (rum.byOS || []).map(r =>
+      `<tr><td>${esc(r.name)}</td><td class="num">${fmt(r.count)}</td></tr>`
+    ).join('') || '<tr><td colspan="2" style="color:var(--ink-mute)">—</td></tr>';
+  } else {
+    document.getElementById('rum-section').style.opacity = '0.4';
+  }
 
   // Bots panel (always shows the bot data)
   const bots = d.last24h_bots;

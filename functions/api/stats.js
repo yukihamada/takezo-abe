@@ -102,8 +102,11 @@ export async function onRequestGet({ request, env }) {
 
   const token = env.CF_ANALYTICS_TOKEN;
   const zone = env.CF_ZONE_ID;
+  const accountId = env.CF_ACCOUNT_ID || '';
+  const rumSiteTag = env.CF_RUM_SITE_TAG || '';
   const end = isoNow();
   const start24 = isoBefore(24);
+  const start7d = isoBefore(7 * 24);
 
   // Last 24h detailed (one query, multiple aliases)
   // We additionally pull "byUA" (top user agents) and "byUAxHour" / "byUAxCountry" / "byUAxPath" so we can
@@ -177,11 +180,50 @@ export async function onRequestGet({ request, env }) {
       }));
   }
 
+  // RUM (Real User Monitoring via Cloudflare Web Analytics) — 7-day window
+  // This is the only source of human-filtered referrer data on free plan.
+  const rumQuery = `
+    query($acc: String!, $site: String!, $start: Time!, $end: Time!) {
+      viewer { accounts(filter: {accountTag: $acc}) {
+        byBot: rumPageloadEventsAdaptiveGroups(limit: 5, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}"}, orderBy: [count_DESC]) {
+          count dimensions { bot }
+        }
+        byReferer: rumPageloadEventsAdaptiveGroups(limit: 30, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}", bot: 0}, orderBy: [count_DESC]) {
+          count dimensions { refererHost refererPath }
+        }
+        byCountry: rumPageloadEventsAdaptiveGroups(limit: 15, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}", bot: 0}, orderBy: [count_DESC]) {
+          count dimensions { countryName }
+        }
+        byBrowser: rumPageloadEventsAdaptiveGroups(limit: 10, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}", bot: 0}, orderBy: [count_DESC]) {
+          count dimensions { userAgentBrowser }
+        }
+        byOS: rumPageloadEventsAdaptiveGroups(limit: 10, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}", bot: 0}, orderBy: [count_DESC]) {
+          count dimensions { userAgentOS }
+        }
+        byDevice: rumPageloadEventsAdaptiveGroups(limit: 5, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}", bot: 0}, orderBy: [count_DESC]) {
+          count dimensions { deviceType }
+        }
+        byPath: rumPageloadEventsAdaptiveGroups(limit: 20, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}", bot: 0}, orderBy: [count_DESC]) {
+          count dimensions { requestPath }
+        }
+        byHour: rumPageloadEventsAdaptiveGroups(limit: 168, filter: {datetime_geq: $start, datetime_lt: $end, siteTag: $site, requestHost: "${HOST}", bot: 0}, orderBy: [datetimeHour_ASC]) {
+          count dimensions { datetimeHour }
+        }
+      } }
+    }`;
+
   try {
-    const [adaptive, ...days] = await Promise.all([
+    const promises = [
       gql(token, adaptiveQuery, { zone, start: start24, end }),
       ...dayQueries
-    ]);
+    ];
+    if (accountId && rumSiteTag) {
+      promises.push(gql(token, rumQuery, { acc: accountId, site: rumSiteTag, start: start7d, end }));
+    }
+    const results = await Promise.all(promises);
+    const adaptive = results[0];
+    const days = results.slice(1, 1 + dayQueries.length);
+    const rumResult = (accountId && rumSiteTag) ? results[results.length - 1] : null;
 
     if (adaptive.errors) {
       return jsonResponse({ ok: false, error: 'GraphQL error', details: adaptive.errors }, { status: 502, origin });
@@ -312,6 +354,31 @@ export async function onRequestGet({ request, env }) {
       bytes: acc.bytes + d[key].bytes
     }), { requests: 0, visits: 0, bytes: 0 });
 
+    // RUM (real user monitoring) — referrer + browser/OS data
+    let rum = null;
+    if (rumResult && !rumResult.errors) {
+      const acc = rumResult?.data?.viewer?.accounts?.[0] || {};
+      const totalHuman = (acc.byBot || []).filter(r => r.dimensions.bot === 0 || r.dimensions.bot === '0').reduce((a, r) => a + r.count, 0);
+      const totalBot   = (acc.byBot || []).filter(r => r.dimensions.bot === 1 || r.dimensions.bot === '1').reduce((a, r) => a + r.count, 0);
+      rum = {
+        windowDays: 7,
+        humanPageviews: totalHuman,
+        botPageviews: totalBot,
+        byReferer: (acc.byReferer || []).map(r => ({
+          host: r.dimensions.refererHost || '',
+          path: r.dimensions.refererPath || '',
+          count: r.count
+        })),
+        byCountry: (acc.byCountry || []).map(r => ({ name: r.dimensions.countryName, count: r.count })),
+        byBrowser: (acc.byBrowser || []).map(r => ({ name: r.dimensions.userAgentBrowser, count: r.count })),
+        byOS:      (acc.byOS || []).map(r => ({ name: r.dimensions.userAgentOS, count: r.count })),
+        byDevice:  (acc.byDevice || []).map(r => ({ name: r.dimensions.deviceType, count: r.count })),
+        byPath:    (acc.byPath || []).map(r => ({ path: r.dimensions.requestPath, count: r.count }))
+      };
+    } else if (rumResult?.errors) {
+      rum = { error: rumResult.errors[0]?.message || 'RUM query failed' };
+    }
+
     return jsonResponse({
       ok: true,
       generatedAt: end,
@@ -321,7 +388,8 @@ export async function onRequestGet({ request, env }) {
       last24h_human: last24hHuman,
       last24h_bots:  { totals: { count: totalsBot.count, sum: { visits: totalsBot.visits, edgeResponseBytes: totalsBot.bytes } }, top: topBots },
       last7d:        { days: reduceDays('all'),   totals: sumDays('all') },
-      last7d_human:  { days: reduceDays('human'), totals: sumDays('human') }
+      last7d_human:  { days: reduceDays('human'), totals: sumDays('human') },
+      rum
     }, { origin });
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err.message || err) }, { status: 500, origin });
