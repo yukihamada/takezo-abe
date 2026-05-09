@@ -289,7 +289,7 @@ export async function onRequestGet({ request, env }) {
     };
 
     // Top bot sources for transparency
-    const topBots = sumRows(botUA, 'userAgent').slice(0, 10).map(r => ({ ua: r.key, count: r.count, visits: r.visits }));
+    const topBots = sumRows(botRowsByUA, 'userAgent').slice(0, 10).map(r => ({ ua: r.key, count: r.count, visits: r.visits }));
 
     // 7-day series — both views
     const reduceDays = (key) => days.reduce((acc, d) => {
